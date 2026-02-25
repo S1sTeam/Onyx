@@ -3,5 +3,6 @@ runtime/
 *.log
 onyx.properties
 dist/
+upstream/
 upstream/**/.gradle/
 upstream/**/build/
