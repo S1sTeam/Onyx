@@ -15,6 +15,8 @@ public record OnyxServerConfig(
     int maxPlayers,
     String versionName,
     int protocolVersion,
+    boolean loginProtocolLockEnabled,
+    int loginProtocolLockVersion,
     String forwardingMode,
     String forwardingSecret,
     int forwardingMaxAgeSeconds,
@@ -142,6 +144,11 @@ public record OnyxServerConfig(
             value(values, "status.versionName", isRussianLocale() ? "Onyx Native RU" : "Onyx Native"));
         int protocolVersion = intValue(values, "status-protocol-version",
             intValue(values, "status.protocolVersion", -1));
+        boolean loginProtocolLockEnabled = boolValue(values, "login-protocol-lock-enabled", false);
+        int loginProtocolLockVersion = intValue(values, "login-protocol-lock-version", 774);
+        if (loginProtocolLockVersion < 47) {
+            loginProtocolLockVersion = 47;
+        }
         String forwardingMode = normalizeForwardingMode(value(values, "forwarding-mode",
             value(values, "onyx.forwarding-mode", "disabled")));
         String forwardingSecret = resolveForwardingSecret(configPath, values, forwardingMode);
@@ -399,6 +406,8 @@ public record OnyxServerConfig(
             maxPlayers,
             versionName,
             protocolVersion,
+            loginProtocolLockEnabled,
+            loginProtocolLockVersion,
             forwardingMode,
             forwardingSecret,
             forwardingMaxAgeSeconds,
@@ -530,6 +539,8 @@ public record OnyxServerConfig(
             max-players = 500
             status-version-name = %s
             status-protocol-version = -1
+            login-protocol-lock-enabled = false
+            login-protocol-lock-version = 774
             forwarding-mode = disabled
             # forwarding-secret = change-me
             # forwarding-secret-file = forwarding.secret

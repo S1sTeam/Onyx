@@ -41,6 +41,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.Mac;
@@ -79,6 +80,9 @@ public final class OnyxServerMain {
     private static final UUID NIL_UUID = new UUID(0L, 0L);
 
     private final AtomicBoolean running = new AtomicBoolean(true);
+    private final AtomicLong totalAcceptedConnections = new AtomicLong();
+    private final AtomicLong totalProtocolLockRejects = new AtomicLong();
+    private final AtomicLong totalCompletedSessions = new AtomicLong();
     private final ExecutorService ioPool = Executors.newCachedThreadPool();
     private final Map<UUID, ActivePlayerStatus> activePlayers = new ConcurrentHashMap<>();
     private final OnyxWorldState worldState = new OnyxWorldState();
@@ -90,6 +94,7 @@ public final class OnyxServerMain {
     private Path persistenceWorldPath;
     private long persistenceAutosaveIntervalNanos;
     private long lastPersistenceSaveNanos;
+    private long startNanos;
 
     public static void main(String[] args) {
         OnyxServerMain main = new OnyxServerMain();
@@ -99,6 +104,7 @@ public final class OnyxServerMain {
 
     private int run(String[] args) {
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "onyxserver-shutdown"));
+        startNanos = System.nanoTime();
         try {
             Map<String, String> cli = parseCli(args);
             Path configPath = Path.of(cli.getOrDefault("config", "onyxserver.conf")).toAbsolutePath().normalize();
@@ -153,6 +159,10 @@ public final class OnyxServerMain {
                 + ", idle-timeout-ms=" + config.playSessionIdleTimeoutMs()
                 + ", disconnect-on-limit=" + config.playSessionDisconnectOnLimit());
             log(tr("Play protocol mode: ", "Play protocol режим: ") + config.playProtocolMode());
+            if (config.loginProtocolLockEnabled()) {
+                log(tr("Login protocol lock enabled: ", "Login protocol lock включен: ")
+                    + config.loginProtocolLockVersion());
+            }
             if (config.playEngineEnabled()) {
                 log(tr("Play engine configured: tps=", "Play engine настроен: tps=") + config.playEngineTps()
                     + ", timePacketId=" + packetIdSettingLabel(config.playEngineTimePacketId())
@@ -264,6 +274,7 @@ public final class OnyxServerMain {
         while (running.get()) {
             try {
                 Socket client = serverSocket.accept();
+                totalAcceptedConnections.incrementAndGet();
                 ioPool.submit(() -> handleClient(client));
             } catch (java.net.SocketTimeoutException ignored) {
                 // Poll running flag.
@@ -302,6 +313,20 @@ public final class OnyxServerMain {
             if (nextState == 1) {
                 handleStatus(in, out, protocol, handshakeIdentity.requestedAddress());
             } else if (nextState == 2) {
+                if (config.loginProtocolLockEnabled()
+                    && profile.requestedProtocol() != config.loginProtocolLockVersion()) {
+                    totalProtocolLockRejects.incrementAndGet();
+                    String reason = tr(
+                        "Unsupported protocol for this server profile. Expected protocol ",
+                        "Неподдерживаемый протокол для этого профиля сервера. Ожидается протокол "
+                    ) + config.loginProtocolLockVersion()
+                        + tr(", got ", ", получен ")
+                        + profile.requestedProtocol();
+                    sendLoginDisconnect(out, reason);
+                    LOG.warning(tr("Rejected login from ", "Отклонен вход от ")
+                        + transportClientAddress + ": " + reason);
+                    return;
+                }
                 if (handshakeIdentity.rejectLogin()) {
                     String reason = tr("Onyx forwarding authentication failed: ", "Ошибка аутентификации Onyx forwarding: ")
                         + handshakeIdentity.rejectReason();
@@ -476,6 +501,7 @@ public final class OnyxServerMain {
             runPlaySession(socket, in, out, profile, username, clientAddress);
         } finally {
             activePlayers.remove(sessionId);
+            totalCompletedSessions.incrementAndGet();
         }
     }
 
@@ -2398,7 +2424,9 @@ public final class OnyxServerMain {
     }
 
     private String buildStatusJson(int protocol, String address) {
-        int effectiveProtocol = config.protocolVersion() >= 0 ? config.protocolVersion() : protocol;
+        int effectiveProtocol = config.protocolVersion() >= 0
+            ? config.protocolVersion()
+            : (config.loginProtocolLockEnabled() ? config.loginProtocolLockVersion() : protocol);
         String motd = escapeJson(config.motd());
         String versionName = escapeJson(config.versionName());
         String addressText = escapeJson(address == null ? "" : address);
@@ -2651,10 +2679,11 @@ public final class OnyxServerMain {
                 new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 String line;
                 while (running.get() && (line = console.readLine()) != null) {
-                    String command = line.trim().toLowerCase(Locale.ROOT);
-                    if ("stop".equals(command) || "shutdown".equals(command) || "exit".equals(command)) {
-                        log(tr("Shutdown command accepted.", "Команда остановки принята."));
-                        stop();
+                    String command = line.trim();
+                    if (command.isEmpty()) {
+                        continue;
+                    }
+                    if (!handleConsoleCommand(command)) {
                         break;
                     }
                 }
@@ -2664,6 +2693,84 @@ public final class OnyxServerMain {
         }, "onyxserver-console");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    private boolean handleConsoleCommand(String rawCommand) {
+        String command = rawCommand.trim().toLowerCase(Locale.ROOT);
+        switch (command) {
+            case "stop", "shutdown", "exit" -> {
+                log(tr("Shutdown command accepted.", "Команда остановки принята."));
+                stop();
+                return false;
+            }
+            case "help", "?" -> {
+                log(tr(
+                    "Console commands: stop|shutdown|exit, help, metrics, players, save",
+                    "Команды консоли: stop|shutdown|exit, help, metrics, players, save"
+                ));
+                return true;
+            }
+            case "metrics" -> {
+                log(buildRuntimeMetricsSnapshot());
+                return true;
+            }
+            case "players" -> {
+                log(buildPlayersSnapshot());
+                return true;
+            }
+            case "save" -> {
+                saveWorldPersistence("command");
+                log(tr("World save requested.", "Запрошено сохранение мира."));
+                return true;
+            }
+            default -> {
+                log(tr("Unknown command: ", "Неизвестная команда: ") + rawCommand);
+                return true;
+            }
+        }
+    }
+
+    private String buildRuntimeMetricsSnapshot() {
+        long uptimeSeconds = startNanos > 0L
+            ? TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos)
+            : 0L;
+        StringBuilder sb = new StringBuilder(192);
+        sb.append("Metrics: uptime=").append(uptimeSeconds).append("s")
+            .append(", activePlayers=").append(activePlayers.size())
+            .append(", acceptedConnections=").append(totalAcceptedConnections.get())
+            .append(", completedSessions=").append(totalCompletedSessions.get())
+            .append(", protocolLockRejects=").append(totalProtocolLockRejects.get())
+            .append(", persistenceEnabled=").append(persistenceEnabled)
+            .append(", persistenceDirty=").append(worldPersistenceDirty.get());
+        if (config != null && config.loginProtocolLockEnabled()) {
+            sb.append(", loginProtocolLock=").append(config.loginProtocolLockVersion());
+        }
+        return sb.toString();
+    }
+
+    private String buildPlayersSnapshot() {
+        List<ActivePlayerStatus> players = new ArrayList<>(activePlayers.values());
+        players.sort(Comparator
+            .comparingLong(ActivePlayerStatus::connectedAtMillis)
+            .thenComparing(ActivePlayerStatus::username));
+        if (players.isEmpty()) {
+            return tr("Players online: 0", "Игроков онлайн: 0");
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append(tr("Players online: ", "Игроков онлайн: ")).append(players.size()).append(" [");
+        int limit = Math.min(players.size(), 12);
+        for (int i = 0; i < limit; i++) {
+            if (i > 0) {
+                sb.append(", ");
+            }
+            ActivePlayerStatus player = players.get(i);
+            sb.append(player.username());
+        }
+        if (players.size() > limit) {
+            sb.append(", ...");
+        }
+        sb.append("]");
+        return sb.toString();
     }
 
     private void stop() {

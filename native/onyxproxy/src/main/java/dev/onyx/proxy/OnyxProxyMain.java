@@ -26,6 +26,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.crypto.Mac;
@@ -41,10 +42,16 @@ public final class OnyxProxyMain {
 
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final ConcurrentHashMap<String, AtomicInteger> activeConnectionsByIp = new ConcurrentHashMap<>();
+    private final AtomicInteger activeProxySessions = new AtomicInteger();
+    private final AtomicLong totalAcceptedConnections = new AtomicLong();
+    private final AtomicLong totalIpLimitRejects = new AtomicLong();
+    private final AtomicLong totalBackendConnectFailures = new AtomicLong();
+    private final AtomicLong totalCompletedSessions = new AtomicLong();
     private final ExecutorService ioPool = Executors.newCachedThreadPool();
     private ServerSocket serverSocket;
     private ProxyPluginManager pluginManager;
     private OnyxProxyConfig config;
+    private long startNanos;
 
     public static void main(String[] args) {
         OnyxProxyMain main = new OnyxProxyMain();
@@ -54,6 +61,7 @@ public final class OnyxProxyMain {
 
     private int run() {
         Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "onyxproxy-shutdown"));
+        startNanos = System.nanoTime();
         try {
             String configName = System.getProperty(CONFIG_PROPERTY, "onyxproxy.conf");
             Path configPath = Path.of(configName).toAbsolutePath().normalize();
@@ -103,6 +111,7 @@ public final class OnyxProxyMain {
         while (running.get()) {
             try {
                 Socket client = serverSocket.accept();
+                totalAcceptedConnections.incrementAndGet();
                 ioPool.submit(() -> handleClient(client));
             } catch (java.net.SocketTimeoutException ignored) {
                 // Poll running flag.
@@ -118,13 +127,17 @@ public final class OnyxProxyMain {
         ConnectedBackend connectedBackend = null;
         String clientAddress = resolveClientAddress(client);
         boolean slotAcquired = false;
+        boolean sessionCounted = false;
         try {
             slotAcquired = tryAcquireConnectionSlot(clientAddress);
             if (!slotAcquired) {
+                totalIpLimitRejects.incrementAndGet();
                 LOG.warning(tr("Connection rejected by max-connections-per-ip for ", "Р СџР С•Р Т‘Р С”Р В»РЎР‹РЎвЂЎР ВµР Р…Р С‘Р Вµ Р С•РЎвЂљР С”Р В»Р С•Р Р…Р ВµР Р…Р С• max-connections-per-ip Р Т‘Р В»РЎРЏ ")
                     + clientAddress);
                 return;
             }
+            activeProxySessions.incrementAndGet();
+            sessionCounted = true;
             InitialPacket initialPacket = readInitialPacket(client);
             String requestedHost = normalizeRequestedHost(initialPacket.requestedHost());
             connectedBackend = connectBackendWithFallback(config.resolveBackends(requestedHost), requestedHost);
@@ -151,6 +164,10 @@ public final class OnyxProxyMain {
             if (slotAcquired) {
                 releaseConnectionSlot(clientAddress);
             }
+            if (sessionCounted) {
+                activeProxySessions.decrementAndGet();
+                totalCompletedSessions.incrementAndGet();
+            }
         }
     }
 
@@ -171,6 +188,7 @@ public final class OnyxProxyMain {
                     return new ConnectedBackend(backend, socket);
                 } catch (IOException connectError) {
                     lastError = connectError;
+                    totalBackendConnectFailures.incrementAndGet();
                     closeQuietly(socket);
                     LOG.log(Level.FINE, tr("Backend connect failed for ", "Не удалось подключиться к backend ")
                         + backend.name()
@@ -421,10 +439,11 @@ public final class OnyxProxyMain {
             try (BufferedReader console = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 String line;
                 while (running.get() && (line = console.readLine()) != null) {
-                    String command = line.trim().toLowerCase(Locale.ROOT);
-                    if ("shutdown".equals(command) || "stop".equals(command) || "exit".equals(command)) {
-                        log(tr("Shutdown command accepted.", "РљРѕРјР°РЅРґР° РѕСЃС‚Р°РЅРѕРІРєРё РїСЂРёРЅСЏС‚Р°."));
-                        stop();
+                    String command = line.trim();
+                    if (command.isEmpty()) {
+                        continue;
+                    }
+                    if (!handleConsoleCommand(command)) {
                         break;
                     }
                 }
@@ -434,6 +453,44 @@ public final class OnyxProxyMain {
         }, "onyxproxy-console");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    private boolean handleConsoleCommand(String rawCommand) {
+        String command = rawCommand.trim().toLowerCase(Locale.ROOT);
+        switch (command) {
+            case "shutdown", "stop", "exit" -> {
+                log(tr("Shutdown command accepted.", "Команда остановки принята."));
+                stop();
+                return false;
+            }
+            case "help", "?" -> {
+                log(tr(
+                    "Console commands: stop|shutdown|exit, help, metrics",
+                    "Команды консоли: stop|shutdown|exit, help, metrics"
+                ));
+                return true;
+            }
+            case "metrics" -> {
+                log(buildProxyMetricsSnapshot());
+                return true;
+            }
+            default -> {
+                log(tr("Unknown command: ", "Неизвестная команда: ") + rawCommand);
+                return true;
+            }
+        }
+    }
+
+    private String buildProxyMetricsSnapshot() {
+        long uptimeSeconds = startNanos > 0L
+            ? TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - startNanos)
+            : 0L;
+        return "Metrics: uptime=" + uptimeSeconds + "s"
+            + ", activeSessions=" + activeProxySessions.get()
+            + ", acceptedConnections=" + totalAcceptedConnections.get()
+            + ", completedSessions=" + totalCompletedSessions.get()
+            + ", ipLimitRejects=" + totalIpLimitRejects.get()
+            + ", backendConnectFailures=" + totalBackendConnectFailures.get();
     }
 
     private void stop() {
@@ -611,4 +668,5 @@ public final class OnyxProxyMain {
     private record VarIntResult(int value, byte[] raw) {
     }
 }
+
 

@@ -131,6 +131,11 @@ public final class RuntimeBootstrap {
             value(existing, "status.versionName", isRussianLocale() ? "Onyx Native RU" : "Onyx Native"));
         int statusProtocolVersion = intValue(existing, "status-protocol-version",
             intValue(existing, "status.protocolVersion", -1));
+        boolean loginProtocolLockEnabled = boolValue(existing, "login-protocol-lock-enabled", false);
+        int loginProtocolLockVersion = intValue(existing, "login-protocol-lock-version", 774);
+        if (loginProtocolLockVersion < 47) {
+            loginProtocolLockVersion = 47;
+        }
         int forwardingMaxAge = intValue(existing, "forwarding-max-age-seconds",
             intValue(existing, "onyx.forwarding-max-age-seconds", 30));
         if (forwardingMaxAge < 1) {
@@ -301,6 +306,8 @@ public final class RuntimeBootstrap {
             max-players = %d
             status-version-name = %s
             status-protocol-version = %d
+            login-protocol-lock-enabled = %s
+            login-protocol-lock-version = %d
             forwarding-mode = %s
             %s
             %s
@@ -376,6 +383,8 @@ public final class RuntimeBootstrap {
             maxPlayers,
             statusVersionName,
             statusProtocolVersion,
+            loginProtocolLockEnabled,
+            loginProtocolLockVersion,
             forwardingMode,
             secretLine,
             forwardingSecretComment,

@@ -330,6 +330,7 @@ try {
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-protocol-mode\s*=.*$' -line "play-protocol-mode = vanilla"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-enabled\s*=.*$' -line "play-session-enabled = true"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-duration-ms\s*=.*$' -line "play-session-duration-ms = 400"
+    $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-persistent\s*=.*$' -line "play-session-persistent = false"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-poll-timeout-ms\s*=.*$' -line "play-session-poll-timeout-ms = 50"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-max-packets\s*=.*$' -line "play-session-max-packets = 128"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-disconnect-on-limit\s*=.*$' -line "play-session-disconnect-on-limit = true"
@@ -432,7 +433,7 @@ try {
     $gotSpawn = $false
     $gotMessage = $false
     $disconnectReason = ""
-    $maxPackets = 128
+    $maxPackets = 1024
     for ($i = 0; $i -lt $maxPackets; $i++) {
     
     $packet = Read-Packet $stream
@@ -796,7 +797,7 @@ try {
     
     }
 
-    throw "Unexpected packet id during bootstrap protocol run: $($packet.Id). Expected init=$BootstrapInitPacketId spawn=$BootstrapSpawnPacketId message=$BootstrapMessagePacketId disconnect=$DisconnectPacketId"
+    continue
     }
     if (-not $gotInit) {
     

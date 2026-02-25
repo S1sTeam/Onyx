@@ -2,10 +2,10 @@ param(
     [string]$JavaBinary = "java",
     [string]$DistPath = "dist",
     [int]$ProxyPort = 29565,
-    [int]$BackendPort = 29566 )
+    [int]$BackendPort = 29566,
+    [int]$Protocol = 769 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$Protocol = 769
 $PlayDisconnectId = 0x1D
 $ConfigFinishId = 0x03
 $ForwardingSecret = "onyx-e2e-forwarding-secret"
@@ -638,6 +638,7 @@ try {
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^forwarding-mode\s*=.*$' -line "forwarding-mode = modern"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^forwarding-secret\s*=.*$' -line "forwarding-secret = $ForwardingSecret"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^forwarding-max-age-seconds\s*=.*$' -line "forwarding-max-age-seconds = 30"
+    $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^login-protocol-lock-enabled\s*=.*$' -line "login-protocol-lock-enabled = false"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-enabled\s*=.*$' -line "play-session-enabled = true"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-duration-ms\s*=.*$' -line "play-session-duration-ms = 150"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-session-disconnect-on-limit\s*=.*$' -line "play-session-disconnect-on-limit = true"

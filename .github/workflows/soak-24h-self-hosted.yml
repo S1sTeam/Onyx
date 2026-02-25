@@ -1,0 +1,47 @@
+name: onyx-soak-24h-self-hosted
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 1 * * 0"
+
+jobs:
+  soak-24h:
+    runs-on: self-hosted
+    timeout-minutes: 1500
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build Onyx
+        shell: pwsh
+        run: ./scripts/build-onyx.ps1
+
+      - name: Init runtime
+        shell: pwsh
+        run: ./scripts/run-onyx.ps1 -InitOnly
+
+      - name: Configure finished v1 profile
+        shell: pwsh
+        run: ./scripts/configure-finished-v1.ps1 -ProtocolVersion 774
+
+      - name: Run 24h soak
+        shell: pwsh
+        run: ./scripts/e2e-play-soak-duration.ps1 -Hours 24 -BaseBackendPort 56000
+
+      - name: Upload soak artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyx-soak-24h
+          if-no-files-found: warn
+          path: |
+            dist/**

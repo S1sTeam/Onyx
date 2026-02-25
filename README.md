@@ -45,6 +45,7 @@ Notes:
 .\scripts\e2e-proxy-failover.ps1
 .\scripts\e2e-proxy-routing.ps1
 .\scripts\e2e-forwarding-auth.ps1
+.\scripts\e2e-login-protocol-lock.ps1
 .\scripts\e2e-play-keepalive.ps1
 .\scripts\e2e-play-keepalive-timeout.ps1
 .\scripts\e2e-play-keepalive-vanilla.ps1
@@ -90,6 +91,9 @@ Notes:
 .\scripts\e2e-play-soak.ps1
 .\scripts\e2e-play-hardening.ps1
 .\scripts\e2e-play-benchmark.ps1
+.\scripts\e2e-play-soak-duration.ps1
+.\scripts\configure-finished-v1.ps1
+.\scripts\e2e-finished-v1.ps1
 .\scripts\e2e-play-full.ps1
 ```
 
@@ -107,6 +111,12 @@ GitHub Actions workflows:
 - `.github/workflows/hardening-nightly.yml`
   - trigger: nightly schedule (`02:30 UTC`) and manual dispatch
   - runs build + init + hardening suite (`anti-crash + soak`) + benchmark report
+- `.github/workflows/finished-v1-gate.yml`
+  - trigger: manual dispatch and release tags (`v*`)
+  - runs full finished-v1 production gate (`scripts/e2e-finished-v1.ps1 -Protocol 774`)
+- `.github/workflows/soak-24h-self-hosted.yml`
+  - trigger: weekly schedule and manual dispatch
+  - runs 24h soak on `self-hosted` runner (`scripts/e2e-play-soak-duration.ps1 -Hours 24`)
 
 Local command equivalents:
 
@@ -194,6 +204,8 @@ OnyxServer options in `runtime/onyxserver/onyxserver.conf`:
 - `bind=host:port`
 - `status-version-name=<name>`
 - `status-protocol-version=<id>`
+- `login-protocol-lock-enabled=true|false`
+- `login-protocol-lock-version=<id>`
 - `forwarding-mode=disabled|modern`
 - `forwarding-secret=<sharedSecret>` or `forwarding-secret-file=<path>`
 - `forwarding-max-age-seconds=30`
@@ -347,12 +359,17 @@ Packet id note:
 - Onyx extension channels (world/entity/inventory/interact/combat) are explicitly pinned to stable Onyx packet ids in vanilla protocol mode and validated by `e2e-play-extensions-vanilla-modern-matrix.ps1`.
 - Play hardening scripts are available for resilience checks: malformed packet storm (`e2e-play-anti-crash.ps1`) and repeated matrix soak loops (`e2e-play-soak.ps1`, `e2e-play-hardening.ps1`).
 - Play benchmark script is available for timing baselines across matrix scenarios (`e2e-play-benchmark.ps1`) with percentile summary output and optional CSV export.
+- Production profile helper is available via `configure-finished-v1.ps1` (locks login protocol to `774` and enables finished-v1 play/proxy defaults; optional `-DisableLoginProtocolLock` for cross-protocol benchmark runs).
+- Finished-v1 gate script is available via `e2e-finished-v1.ps1` (build/init/profile/gate checks in one run).
+- Duration-based soak runner is available via `e2e-play-soak-duration.ps1` (e.g. `-Hours 24`).
 - Play engine tick/time stream is available via `play-engine-*` and can periodically broadcast game/day time packets.
 - World persistence snapshots can be enabled via `play-persistence-*` with optional autosave and manual `save` command.
 - Proxy runtime supports hardening controls for per-IP connection limits and backend connection resilience (`max-connections-per-ip`, `connect-timeout-ms`, `first-packet-timeout-ms`, `backend-connect-attempts`).
 - OnyxServer plugins can intercept chat/command input callbacks and consume built-in handling.
 - OnyxServer plugins can register command handlers through `OnyxServerContext.registerCommand(...)`.
 - Built-in input command dispatch currently supports: `ping`, `where`, `help`, `echo`, `save`.
+- Server console commands support: `stop|shutdown|exit`, `help`, `metrics`, `players`, `save`.
+- Proxy console commands support: `stop|shutdown|exit`, `help`, `metrics`.
 - Bootstrap/movement/input/world/entity/inventory/interact/combat packet ids use Onyx protocol profile defaults when set to `-1`.
 - Plugin loaders now inspect jar metadata and log compatibility markers for Paper/Spigot/Velocity/Bungee descriptors when native Onyx SPI is missing.
 - Play-session pipeline is enabled for continuous runtime; limit-based disconnect remains configurable.
@@ -365,5 +382,6 @@ Packet id note:
 ## Documents
 
 - Architecture: `docs/ARCHITECTURE.md`
+- Finished roadmap: `docs/FINISHED_ROADMAP.md`
 - Licensing checklist: `docs/LEGAL.md`
 - Plugin notes: `docs/PLUGINS.md`

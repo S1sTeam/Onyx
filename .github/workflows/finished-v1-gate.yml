@@ -1,0 +1,36 @@
+name: onyx-finished-v1-gate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  finished-v1:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Finished v1 gate
+        shell: pwsh
+        run: ./scripts/e2e-finished-v1.ps1 -Protocol 774
+
+      - name: Upload gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyx-finished-v1-gate
+          if-no-files-found: warn
+          path: |
+            dist/**
