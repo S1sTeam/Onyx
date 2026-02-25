@@ -35,7 +35,7 @@ jobs:
 
       - name: Play benchmark report
         shell: pwsh
-        run: ./scripts/e2e-play-benchmark.ps1 -Iterations 2 -BaseBackendPort 49300 -ReportPath target/e2e-play-benchmark-nightly.csv
+        run: ./scripts/e2e-play-benchmark.ps1 -Iterations 2 -BaseBackendPort 49300 -PortStridePerIteration 400 -MaxAttemptsPerTest 3 -RetryPortBump 1000 -ReportPath target/e2e-play-benchmark-nightly.csv
 
       - name: Upload hardening artifacts
         if: always()

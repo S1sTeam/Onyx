@@ -96,7 +96,7 @@ Notes:
 `e2e-login.ps1` validates login/disconnect adapter behavior for:
 - 47, 340, 758, 759, 760, 763, 764, 765, 766, 769, 770, 773, 774, 775
 
-`e2e-play-benchmark.ps1` runs matrix play scenarios and prints timing stats (`avg`, `p50`, `p95`, `p99`, `min`, `max`) with optional CSV report via `-ReportPath` and optional test subset via `-OnlyTests`.
+`e2e-play-benchmark.ps1` runs matrix play scenarios and prints timing stats (`avg`, `p50`, `p95`, `p99`, `min`, `max`) with optional CSV report via `-ReportPath`, optional test subset via `-OnlyTests`, and bind-conflict retry controls (`-MaxAttemptsPerTest`, `-RetryPortBump`).
 
 ## CI/CD
 

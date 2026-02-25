@@ -3,10 +3,12 @@ param(
     [string]$DistPath = "dist",
     [int]$Iterations = 3,
     [int]$BaseBackendPort = 49100,
-    [int]$PortStridePerIteration = 240,
+    [int]$PortStridePerIteration = 400,
     [int]$DelayMsBetweenRuns = 200,
     [string]$ReportPath = "",
-    [string[]]$OnlyTests = @()
+    [string[]]$OnlyTests = @(),
+    [int]$MaxAttemptsPerTest = 2,
+    [int]$RetryPortBump = 1000
 )
 
 Set-StrictMode -Version Latest
@@ -14,6 +16,12 @@ $ErrorActionPreference = "Stop"
 
 if ($Iterations -lt 1) {
     throw "Iterations must be >= 1."
+}
+if ($MaxAttemptsPerTest -lt 1) {
+    throw "MaxAttemptsPerTest must be >= 1."
+}
+if ($RetryPortBump -lt 1) {
+    throw "RetryPortBump must be >= 1."
 }
 
 function Get-Percentile([double[]]$values, [double]$percentile) {
@@ -80,28 +88,40 @@ for ($iteration = 0; $iteration -lt $Iterations; $iteration++) {
         }
 
         $backendPort = $iterBasePort + $test.PortOffset
+        $attemptPort = $backendPort
+        $attempt = 0
         $sw = [System.Diagnostics.Stopwatch]::StartNew()
-        try {
-            & $path `
-                -JavaBinary $JavaBinary `
-                -DistPath $DistPath `
-                -BaseBackendPort $backendPort
-        } catch {
-            throw "Benchmark failed at iteration=$($iteration + 1), test=$($test.Name): $($_.Exception.Message)"
-        } finally {
-            $sw.Stop()
+        while ($true) {
+            $attempt++
+            try {
+                & $path `
+                    -JavaBinary $JavaBinary `
+                    -DistPath $DistPath `
+                    -BaseBackendPort $attemptPort
+                break
+            } catch {
+                $message = $_.Exception.Message
+                $bindConflict = ($message -match 'Address already in use') -or ($message -match 'BindException')
+                if ($bindConflict -and $attempt -lt $MaxAttemptsPerTest) {
+                    $attemptPort += $RetryPortBump
+                    Write-Host "[ONYX][BENCH] RETRY test=$($test.Name) attempt=$attempt reason=bind-conflict next-port=$attemptPort"
+                    continue
+                }
+                throw "Benchmark failed at iteration=$($iteration + 1), test=$($test.Name), attempt=$attempt, base-port=${attemptPort}: $message"
+            }
         }
+        $sw.Stop()
 
         $elapsedSeconds = [Math]::Round($sw.Elapsed.TotalSeconds, 3)
         $timingsByTest[$test.Name].Add($elapsedSeconds)
         $runRows.Add([PSCustomObject]@{
             test = $test.Name
             iteration = $iteration + 1
-            backend_port = $backendPort
+            backend_port = $attemptPort
             elapsed_seconds = Format-Invariant -value $elapsedSeconds
         }) | Out-Null
 
-        Write-Host "[ONYX][BENCH] RUN_OK test=$($test.Name) elapsed_seconds=$(Format-Invariant -value $elapsedSeconds) port=$backendPort"
+        Write-Host "[ONYX][BENCH] RUN_OK test=$($test.Name) elapsed_seconds=$(Format-Invariant -value $elapsedSeconds) port=$attemptPort attempts=$attempt"
         if ($DelayMsBetweenRuns -gt 0) {
             Start-Sleep -Milliseconds $DelayMsBetweenRuns
         }
