@@ -337,6 +337,7 @@ try {
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-world-chunk-packet-id\s*=.*$' -line "play-world-chunk-packet-id = -1"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-world-action-packet-id\s*=.*$' -line "play-world-action-packet-id = -1"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-world-block-update-packet-id\s*=.*$' -line "play-world-block-update-packet-id = -1"
+    $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-persistence-enabled\s*=.*$' -line "play-persistence-enabled = false"
     Set-Content -Path $serverConfigPath -Value $serverConfig -Encoding UTF8 -NoNewline
     $server = New-JavaProcess -fileName $JavaBinary -workingDir $serverDir -arguments "-jar onyxserver.jar --config onyxserver.conf --onyx-settings onyx.yml"
     Start-Sleep -Milliseconds 1200

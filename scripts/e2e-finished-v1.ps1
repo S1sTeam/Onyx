@@ -117,7 +117,7 @@ Invoke-Step "play-benchmark-smoke" {
         -DistPath $DistPath `
         -Iterations 1 `
         -BaseBackendPort ($BaseBackendPort + 200) `
-        -OnlyTests e2e-play-entity-inventory-modern-matrix.ps1
+        -OnlyTests e2e-play-world-modern-matrix.ps1,e2e-play-entity-inventory-modern-matrix.ps1,e2e-play-combat-modern-matrix.ps1
 }
 
 Write-Host "[ONYX] E2E_FINISHED_V1_OK"

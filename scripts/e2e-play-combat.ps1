@@ -373,6 +373,7 @@ try {
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-combat-damage-multiplier-projectile\s*=.*$' -line "play-combat-damage-multiplier-projectile = 1.0"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-combat-damage-multiplier-magic\s*=.*$' -line "play-combat-damage-multiplier-magic = 1.0"
     $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-combat-damage-multiplier-true\s*=.*$' -line "play-combat-damage-multiplier-true = 1.0"
+    $serverConfig = Upsert-Line -content $serverConfig -pattern '(?m)^play-persistence-enabled\s*=.*$' -line "play-persistence-enabled = false"
     Set-Content -Path $serverConfigPath -Value $serverConfig -Encoding UTF8 -NoNewline
     $server = New-JavaProcess -fileName $JavaBinary -workingDir $serverDir -arguments "-jar onyxserver.jar --config onyxserver.conf --onyx-settings onyx.yml"
     Start-Sleep -Milliseconds 1200
