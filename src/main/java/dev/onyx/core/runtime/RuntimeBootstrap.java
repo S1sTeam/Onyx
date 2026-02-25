@@ -4,15 +4,21 @@ import dev.onyx.core.config.OnyxConfig;
 import dev.onyx.core.i18n.I18n;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public final class RuntimeBootstrap {
+    private static final String EMBEDDED_PROXY_JAR = "/embedded/onyxproxy.jar";
+    private static final String EMBEDDED_SERVER_JAR = "/embedded/onyxserver.jar";
+
     private final Path root;
     private final OnyxConfig config;
     private final I18n i18n;
@@ -33,6 +39,8 @@ public final class RuntimeBootstrap {
             Files.createDirectories(config.backendWorkDir().resolve("plugins"));
         }
 
+        ensureEmbeddedRuntimeJars();
+
         if (!config.writeDefaultConfigs()) {
             return;
         }
@@ -48,6 +56,35 @@ public final class RuntimeBootstrap {
             writeEula();
             if (config.proxyEnabled() && "modern".equalsIgnoreCase(config.proxyForwardingMode())) {
                 writeBackendProxyBridge(forwardingSecret);
+            }
+        }
+    }
+
+    private void ensureEmbeddedRuntimeJars() throws IOException {
+        if (config.proxyEnabled()) {
+            extractEmbeddedRuntimeJar(config.proxyJar(), EMBEDDED_PROXY_JAR);
+        }
+        if (config.backendEnabled()) {
+            extractEmbeddedRuntimeJar(config.backendJar(), EMBEDDED_SERVER_JAR);
+        }
+    }
+
+    private static void extractEmbeddedRuntimeJar(Path destination, String resourcePath) throws IOException {
+        try (InputStream in = RuntimeBootstrap.class.getResourceAsStream(resourcePath)) {
+            if (in == null) {
+                return;
+            }
+            Path absoluteDestination = destination.toAbsolutePath().normalize();
+            Path parent = absoluteDestination.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Path tempFile = absoluteDestination.resolveSibling(absoluteDestination.getFileName() + ".tmp");
+            Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tempFile, absoluteDestination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException ignored) {
+                Files.move(tempFile, absoluteDestination, StandardCopyOption.REPLACE_EXISTING);
             }
         }
     }

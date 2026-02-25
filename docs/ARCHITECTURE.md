@@ -8,9 +8,7 @@ Build an independent Onyx runtime stack in this repository:
 - `Onyx Core` launcher/orchestrator (`src/main/java/dev/onyx/core`)
 
 The distribution keeps one-command deployment:
-- `server.jar` (launcher)
-- `runtime/onyxproxy/onyxproxy.jar`
-- `runtime/onyxserver/onyxserver.jar`
+- `server.jar` (single self-extracting launcher with embedded OnyxProxy + OnyxServer runtimes)
 
 ## Repository layout
 

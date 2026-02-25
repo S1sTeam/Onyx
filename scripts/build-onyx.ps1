@@ -34,6 +34,43 @@ function Invoke-Checked([string]$WorkingDirectory, [string]$Executable, [string[
     }
 }
 
+function Set-ZipEntryFromFile(
+    [System.IO.Compression.ZipArchive]$ZipArchive,
+    [string]$EntryName,
+    [string]$SourceFilePath
+) {
+    $existing = $ZipArchive.GetEntry($EntryName)
+    if ($null -ne $existing) {
+        $existing.Delete()
+    }
+
+    $entry = $ZipArchive.CreateEntry($EntryName, [System.IO.Compression.CompressionLevel]::NoCompression)
+    $entryStream = $entry.Open()
+    $sourceStream = [System.IO.File]::OpenRead($SourceFilePath)
+    try {
+        $sourceStream.CopyTo($entryStream)
+    } finally {
+        $sourceStream.Dispose()
+        $entryStream.Dispose()
+    }
+}
+
+function Embed-LauncherRuntimes(
+    [string]$LauncherJarPath,
+    [string]$ProxyJarPath,
+    [string]$ServerJarPath
+) {
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::Open($LauncherJarPath, [System.IO.Compression.ZipArchiveMode]::Update)
+    try {
+        Set-ZipEntryFromFile -ZipArchive $zip -EntryName "embedded/onyxproxy.jar" -SourceFilePath $ProxyJarPath
+        Set-ZipEntryFromFile -ZipArchive $zip -EntryName "embedded/onyxserver.jar" -SourceFilePath $ServerJarPath
+    } finally {
+        $zip.Dispose()
+    }
+}
+
 function Resolve-Artifact([string]$BuiltJarPath, [string]$RuntimeJarPath, [string]$ArtifactLabel) {
     if (Test-Path $BuiltJarPath) {
         return [PSCustomObject]@{
@@ -108,6 +145,9 @@ if (-not (Test-Path $launcherTargetJar)) {
 $proxyArtifact = Resolve-Artifact -BuiltJarPath $nativeProxyJar -RuntimeJarPath $runtimeProxyJar -ArtifactLabel "OnyxProxy"
 $serverArtifact = Resolve-Artifact -BuiltJarPath $nativeServerJar -RuntimeJarPath $runtimeServerJar -ArtifactLabel "OnyxServer"
 
+Write-Step "Embedding native runtimes into launcher jar..."
+Embed-LauncherRuntimes -LauncherJarPath $launcherTargetJar -ProxyJarPath $proxyArtifact.FullName -ServerJarPath $serverArtifact.FullName
+
 Write-Step "Packaging distribution..."
 New-Item -ItemType Directory -Force -Path $distRoot | Out-Null
 
@@ -119,22 +159,20 @@ if (Test-Path $distRuntime) {
 if (Test-Path $distLicenses) {
     Remove-Item -Recurse -Force $distLicenses
 }
+if (Test-Path (Join-Path $distRoot "onyx-core.jar")) {
+    Remove-Item -Force (Join-Path $distRoot "onyx-core.jar")
+}
 if (Test-Path (Join-Path $distRoot "onyx.properties")) {
     Remove-Item -Force (Join-Path $distRoot "onyx.properties")
 }
 
-New-Item -ItemType Directory -Force -Path (Join-Path $distRoot "runtime/onyxproxy") | Out-Null
-New-Item -ItemType Directory -Force -Path (Join-Path $distRoot "runtime/onyxserver") | Out-Null
 New-Item -ItemType Directory -Force -Path $distLicenses | Out-Null
 
 Copy-Item -Force $launcherTargetJar (Join-Path $distRoot "server.jar")
-Copy-Item -Force $launcherTargetJar (Join-Path $distRoot "onyx-core.jar")
-Copy-Item -Force $proxyArtifact.FullName (Join-Path $distRoot "runtime/onyxproxy/onyxproxy.jar")
-Copy-Item -Force $serverArtifact.FullName (Join-Path $distRoot "runtime/onyxserver/onyxserver.jar")
 
 $licenseText = @(
     "Onyx Native Distribution",
-    "This package contains native Onyx launcher, OnyxProxy and OnyxServer artifacts built from this repository.",
+    "This package contains a single self-extracting Onyx launcher jar with embedded OnyxProxy and OnyxServer runtimes.",
     "Upstream reference folders may exist in the repo history, but are not required for native runtime packaging."
 )
 Set-Content -Path (Join-Path $distLicenses "onyx-native-NOTICE.txt") -Value $licenseText -Encoding UTF8
@@ -148,6 +186,7 @@ if (Test-Path (Join-Path $root ".git")) {
 $manifest = @(
     "builtAt=$(Get-Date -Format o)",
     "mode=native",
+    "distributionLayout=single-jar-self-extracting",
     "launcherJar=target/onyx-core.jar",
     "onyxCoreCommit=$rootCommit",
     "onyxProxyJar=$($proxyArtifact.Name)",

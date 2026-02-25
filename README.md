@@ -131,9 +131,7 @@ Local command equivalents:
 ## Output distribution
 
 After packaging, deployable files are in `dist/`:
-- `dist/server.jar` (Onyx launcher)
-- `dist/runtime/onyxproxy/onyxproxy.jar`
-- `dist/runtime/onyxserver/onyxserver.jar`
+- `dist/server.jar` (single self-extracting Onyx launcher)
 - `dist/licenses/*`
 - `dist/versions.txt`
 
