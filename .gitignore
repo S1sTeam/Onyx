@@ -1,0 +1,7 @@
+target/
+runtime/
+*.log
+onyx.properties
+dist/
+upstream/**/.gradle/
+upstream/**/build/

@@ -1,0 +1,9 @@
+package dev.onyx.server.protocol;
+
+public enum LoginStartLayout {
+    USERNAME_ONLY,
+    USERNAME_OPTIONAL_SIGNATURE,
+    USERNAME_OPTIONAL_SIGNATURE_OPTIONAL_UUID,
+    USERNAME_OPTIONAL_UUID,
+    USERNAME_REQUIRED_UUID
+}

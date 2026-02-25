@@ -1,0 +1,48 @@
+name: onyx-hardening-nightly
+
+on:
+  schedule:
+    - cron: "30 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  hardening:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build Onyx distribution
+        shell: pwsh
+        run: ./scripts/build-onyx.ps1
+
+      - name: Initialize runtime files
+        shell: pwsh
+        run: ./scripts/run-onyx.ps1 -InitOnly
+
+      - name: Play hardening suite
+        shell: pwsh
+        run: ./scripts/e2e-play-hardening.ps1 -AntiCrashMalformedConnections 200 -SoakIterations 2 -SoakBaseBackendPort 48200
+
+      - name: Play benchmark report
+        shell: pwsh
+        run: ./scripts/e2e-play-benchmark.ps1 -Iterations 2 -BaseBackendPort 49300 -ReportPath target/e2e-play-benchmark-nightly.csv
+
+      - name: Upload hardening artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyx-nightly-hardening
+          if-no-files-found: warn
+          path: |
+            dist/**
+            target/e2e-play-benchmark-nightly.csv
