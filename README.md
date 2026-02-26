@@ -167,6 +167,8 @@ The launcher creates `onyx.properties` on first start.
 
 Main options:
 - `system.locale=en|ru`
+- `panel.mode=auto|true|false` (`auto` detects panel env like `SERVER_PORT`)
+- `panel.portEnvVar=SERVER_PORT`
 - `proxy.enabled=true|false`
 - `backend.enabled=true|false`
 - `proxy.port=25565`
@@ -178,6 +180,7 @@ Main options:
 - `proxy.forwardingMode=modern`
 - `backend.autoEula=false`
 - `setup.runtimeJarBackupOnReplace=true|false` (when embedded runtime updates an existing `runtime/*.jar`, save previous file as `.bak`)
+- `setup.removeLegacyServerProperties=true|false` (remove `server.properties` from root/backend runtime paths on bootstrap)
 
 Locale note:
 - `system.locale` is used by launcher messages and is passed to native `OnyxProxy`/`OnyxServer` (`-Donyx.locale=...`) for runtime log/config localization.

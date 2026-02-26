@@ -32,6 +32,7 @@ public record OnyxConfig(
     String localServerName,
     int stopTimeoutSeconds,
     boolean runtimeJarBackupOnReplace,
+    boolean removeLegacyServerProperties,
     boolean writeDefaultConfigs
 ) {
 }

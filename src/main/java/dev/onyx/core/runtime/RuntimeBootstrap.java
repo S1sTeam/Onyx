@@ -32,6 +32,8 @@ public final class RuntimeBootstrap {
     }
 
     public void prepare() throws IOException {
+        removeLegacyServerPropertiesIfConfigured();
+
         if (config.proxyEnabled()) {
             Files.createDirectories(config.proxyWorkDir());
             Files.createDirectories(config.proxyWorkDir().resolve("plugins"));
@@ -68,6 +70,20 @@ public final class RuntimeBootstrap {
         }
         if (config.backendEnabled()) {
             extractEmbeddedRuntimeJar(config.backendJar(), EMBEDDED_SERVER_JAR);
+        }
+    }
+
+    private void removeLegacyServerPropertiesIfConfigured() throws IOException {
+        if (!config.removeLegacyServerProperties()) {
+            return;
+        }
+        removeIfExists(root.resolve("server.properties"));
+        removeIfExists(config.backendWorkDir().resolve("server.properties"));
+    }
+
+    private void removeIfExists(Path file) throws IOException {
+        if (Files.deleteIfExists(file.toAbsolutePath().normalize())) {
+            System.out.println(i18n.t("bootstrap.legacyServerPropertiesRemoved", relative(file)));
         }
     }
 

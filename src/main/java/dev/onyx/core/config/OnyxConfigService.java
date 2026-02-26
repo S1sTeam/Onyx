@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -38,6 +39,16 @@ public final class OnyxConfigService {
         }
 
         Path root = configPath.getParent() == null ? Path.of("") : configPath.getParent();
+        String panelPortEnvVar = value(props, "panel.portEnvVar", "SERVER_PORT");
+        boolean panelMode = resolvePanelMode(value(props, "panel.mode", "auto"), panelPortEnvVar);
+        int panelEnvPort = envInt(panelPortEnvVar, -1);
+        int proxyPortDefault = (panelMode && panelEnvPort > 0) ? panelEnvPort : 25565;
+        String proxyPortRaw = props.getProperty("proxy.port");
+        int proxyPort = intValue(props, "proxy.port", proxyPortDefault);
+        if (panelMode && panelEnvPort > 0 && isDefaultPortValue(proxyPortRaw, 25565)) {
+            proxyPort = panelEnvPort;
+        }
+
         return new OnyxConfig(
             value(props, "system.locale", "en"),
             value(props, "system.javaBinary", "java"),
@@ -45,7 +56,7 @@ public final class OnyxConfigService {
             root.resolve(value(props, "proxy.jar", "runtime/onyxproxy/onyxproxy.jar")).normalize(),
             root.resolve(value(props, "proxy.workDir", "runtime/onyxproxy")).normalize(),
             value(props, "proxy.configFile", "onyxproxy.conf"),
-            intValue(props, "proxy.port", 25565),
+            proxyPort,
             value(props, "proxy.host", "0.0.0.0"),
             value(props, "proxy.forwardingMode", "modern"),
             value(props, "proxy.forwardingSecretFile", "forwarding.secret"),
@@ -68,6 +79,7 @@ public final class OnyxConfigService {
             value(props, "network.localServerName", "local"),
             intValue(props, "lifecycle.stopTimeoutSeconds", 15),
             boolValue(props, "setup.runtimeJarBackupOnReplace", true),
+            boolValue(props, "setup.removeLegacyServerProperties", true),
             boolValue(props, "setup.writeDefaultConfigs", true)
         );
     }
@@ -75,16 +87,21 @@ public final class OnyxConfigService {
     private static void writeDefaults(Path configPath) throws IOException {
         Files.createDirectories(configPath.getParent());
         Properties defaults = new Properties();
+        String panelPortEnvVar = "SERVER_PORT";
+        int proxyPortDefault = envInt(panelPortEnvVar, 25565);
 
         defaults.setProperty("system.locale", "en");
         defaults.setProperty("system.javaBinary", "java");
+
+        defaults.setProperty("panel.mode", "auto");
+        defaults.setProperty("panel.portEnvVar", panelPortEnvVar);
 
         defaults.setProperty("proxy.enabled", "true");
         defaults.setProperty("proxy.jar", "runtime/onyxproxy/onyxproxy.jar");
         defaults.setProperty("proxy.workDir", "runtime/onyxproxy");
         defaults.setProperty("proxy.configFile", "onyxproxy.conf");
         defaults.setProperty("proxy.host", "0.0.0.0");
-        defaults.setProperty("proxy.port", "25565");
+        defaults.setProperty("proxy.port", Integer.toString(proxyPortDefault));
         defaults.setProperty("proxy.forwardingMode", "modern");
         defaults.setProperty("proxy.forwardingSecretFile", "forwarding.secret");
         defaults.setProperty("proxy.memory", "512M");
@@ -109,6 +126,7 @@ public final class OnyxConfigService {
         defaults.setProperty("network.localServerName", "local");
         defaults.setProperty("lifecycle.stopTimeoutSeconds", "15");
         defaults.setProperty("setup.runtimeJarBackupOnReplace", "true");
+        defaults.setProperty("setup.removeLegacyServerProperties", "true");
         defaults.setProperty("setup.writeDefaultConfigs", "true");
 
         try (OutputStream out = Files.newOutputStream(configPath)) {
@@ -153,6 +171,49 @@ public final class OnyxConfigService {
             return Long.parseLong(value.trim());
         } catch (NumberFormatException ignored) {
             return defaultValue;
+        }
+    }
+
+    private static int envInt(String envKey, int defaultValue) {
+        if (envKey == null || envKey.isBlank()) {
+            return defaultValue;
+        }
+        String raw = System.getenv(envKey.trim());
+        if (raw == null || raw.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException ignored) {
+            return defaultValue;
+        }
+    }
+
+    private static boolean resolvePanelMode(String modeValue, String panelPortEnvVar) {
+        String normalized = modeValue == null ? "auto" : modeValue.trim().toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "true", "on", "yes", "1", "enabled" -> true;
+            case "false", "off", "no", "0", "disabled" -> false;
+            default -> hasPanelEnvironment(panelPortEnvVar);
+        };
+    }
+
+    private static boolean hasPanelEnvironment(String panelPortEnvVar) {
+        String pterodactyl = System.getenv("PTERODACTYL");
+        if (pterodactyl != null && !pterodactyl.isBlank()) {
+            return true;
+        }
+        return envInt(panelPortEnvVar, -1) > 0;
+    }
+
+    private static boolean isDefaultPortValue(String rawValue, int defaultPort) {
+        if (rawValue == null || rawValue.isBlank()) {
+            return true;
+        }
+        try {
+            return Integer.parseInt(rawValue.trim()) == defaultPort;
+        } catch (NumberFormatException ignored) {
+            return false;
         }
     }
 }
