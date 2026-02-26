@@ -177,6 +177,7 @@ Main options:
 - `backend.legacyConfigFile=onyx.yml`
 - `proxy.forwardingMode=modern`
 - `backend.autoEula=false`
+- `setup.runtimeJarBackupOnReplace=true|false` (when embedded runtime updates an existing `runtime/*.jar`, save previous file as `.bak`)
 
 Locale note:
 - `system.locale` is used by launcher messages and is passed to native `OnyxProxy`/`OnyxServer` (`-Donyx.locale=...`) for runtime log/config localization.

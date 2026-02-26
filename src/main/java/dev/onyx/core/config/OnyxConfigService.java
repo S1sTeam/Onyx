@@ -67,6 +67,7 @@ public final class OnyxConfigService {
             longValue(props, "backend.startupDelayMs", 5000),
             value(props, "network.localServerName", "local"),
             intValue(props, "lifecycle.stopTimeoutSeconds", 15),
+            boolValue(props, "setup.runtimeJarBackupOnReplace", true),
             boolValue(props, "setup.writeDefaultConfigs", true)
         );
     }
@@ -107,6 +108,7 @@ public final class OnyxConfigService {
 
         defaults.setProperty("network.localServerName", "local");
         defaults.setProperty("lifecycle.stopTimeoutSeconds", "15");
+        defaults.setProperty("setup.runtimeJarBackupOnReplace", "true");
         defaults.setProperty("setup.writeDefaultConfigs", "true");
 
         try (OutputStream out = Files.newOutputStream(configPath)) {

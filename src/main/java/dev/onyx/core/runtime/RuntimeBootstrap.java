@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -69,24 +71,75 @@ public final class RuntimeBootstrap {
         }
     }
 
-    private static void extractEmbeddedRuntimeJar(Path destination, String resourcePath) throws IOException {
+    private void extractEmbeddedRuntimeJar(Path destination, String resourcePath) throws IOException {
         try (InputStream in = RuntimeBootstrap.class.getResourceAsStream(resourcePath)) {
             if (in == null) {
                 return;
             }
+            byte[] embeddedJar = in.readAllBytes();
             Path absoluteDestination = destination.toAbsolutePath().normalize();
             Path parent = absoluteDestination.getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
+            boolean existed = Files.exists(absoluteDestination);
+            if (existed && fileSha256(absoluteDestination).equals(bytesSha256(embeddedJar))) {
+                return;
+            }
+            if (existed && config.runtimeJarBackupOnReplace()) {
+                Path backup = absoluteDestination.resolveSibling(absoluteDestination.getFileName() + ".bak");
+                Files.copy(absoluteDestination, backup, StandardCopyOption.REPLACE_EXISTING);
+                System.out.println(i18n.t("bootstrap.runtimeJarBackupWritten", relative(backup)));
+            }
             Path tempFile = absoluteDestination.resolveSibling(absoluteDestination.getFileName() + ".tmp");
-            Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            Files.write(tempFile, embeddedJar);
             try {
                 Files.move(tempFile, absoluteDestination, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException ignored) {
                 Files.move(tempFile, absoluteDestination, StandardCopyOption.REPLACE_EXISTING);
             }
+            System.out.println(i18n.t(
+                existed ? "bootstrap.runtimeJarUpdated" : "bootstrap.runtimeJarExtracted",
+                relative(absoluteDestination)
+            ));
         }
+    }
+
+    private static String fileSha256(Path file) throws IOException {
+        MessageDigest digest = newSha256Digest();
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                if (read > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+        }
+        return toHex(digest.digest());
+    }
+
+    private static String bytesSha256(byte[] data) {
+        MessageDigest digest = newSha256Digest();
+        digest.update(data);
+        return toHex(digest.digest());
+    }
+
+    private static MessageDigest newSha256Digest() {
+        try {
+            return MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", e);
+        }
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(Character.forDigit((b >> 4) & 0x0F, 16));
+            sb.append(Character.forDigit(b & 0x0F, 16));
+        }
+        return sb.toString();
     }
 
     private String ensureForwardingSecret() throws IOException {

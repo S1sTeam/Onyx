@@ -28,7 +28,7 @@ The distribution keeps one-command deployment:
 ## Execution model
 
 `server.jar` (launcher) orchestrates child processes:
-1. Prepare runtime folders and default config files.
+1. Prepare runtime folders, extract/update embedded runtime jars (`runtime/onyxproxy/onyxproxy.jar`, `runtime/onyxserver/onyxserver.jar`) and write default config files.
 2. Start `OnyxServer` process.
 3. Start `OnyxProxy` process.
 4. Forward shutdown commands to managed processes.

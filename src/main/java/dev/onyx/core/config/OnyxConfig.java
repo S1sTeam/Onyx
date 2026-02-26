@@ -31,6 +31,7 @@ public record OnyxConfig(
     long backendStartupDelayMs,
     String localServerName,
     int stopTimeoutSeconds,
+    boolean runtimeJarBackupOnReplace,
     boolean writeDefaultConfigs
 ) {
 }
